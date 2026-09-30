@@ -1,0 +1,192 @@
+!pip install -q -U transformers datasets peft accelerate bitsandbytes
+model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+from transformers import AutoTokenizer
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+print("Tokenizer loaded successfully")
+from transformers import AutoModelForCausalLM
+
+model = AutoModelForCausalLM.from_pretrained(model_name)
+
+print("Model loaded successfully")
+from datasets import Dataset
+
+data = {
+    "instruction": [
+        "What is Python?",
+        "What is Machine Learning?",
+        "What is RAG?",
+        "What is an LLM?",
+        "What is fine-tuning?",
+        "What is SQL?",
+        "What is a neural network?",
+        "What is a tokenizer?"
+    ],
+
+    "response": [
+        "Python is a high-level programming language widely used for software development, data analysis, machine learning, and automation.",
+        "Machine Learning is a branch of AI where computers learn patterns from data and use those patterns to make predictions or decisions.",
+        "RAG stands for Retrieval-Augmented Generation. It retrieves relevant information from an external knowledge source and provides it to an LLM to generate an answer.",
+        "An LLM is a Large Language Model trained on large amounts of text to understand and generate human-like language.",
+        "Fine-tuning is the process of training a pretrained model further on a specific dataset so that it becomes better at a particular task or behavior.",
+        "SQL is a language used to communicate with and manage relational databases.",
+        "A neural network is a machine learning model made of interconnected layers that learn patterns from data.",
+        "A tokenizer converts text into tokens and then into token IDs that can be processed by an LLM."
+    ]
+}
+
+dataset = Dataset.from_dict(data)
+
+print(dataset)
+def format_example(example):
+    return {
+        "text": f"""<|user|>
+{example["instruction"]}
+<|assistant|>
+{example["response"]}"""
+    }
+
+formatted_dataset = dataset.map(format_example)
+
+print(formatted_dataset[0])
+def tokenize_function(example):
+    tokens = tokenizer(
+        example["text"],
+        truncation=True,
+        max_length=512
+    )
+
+    # Required for calculating training loss
+    tokens["labels"] = tokens["input_ids"].copy()
+
+    return tokens
+
+
+tokenized_dataset = formatted_dataset.map(
+    tokenize_function,
+    batched=True
+)
+
+print(tokenized_dataset.column_names)
+
+
+from peft import LoraConfig
+
+lora_config = LoraConfig(
+    r=8,
+    lora_alpha=16,
+    lora_dropout=0.05,
+    target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
+    bias="none",
+    task_type="CAUSAL_LM"
+)
+
+print("LoRA configuration created")
+from peft import get_peft_model
+
+model = get_peft_model(model, lora_config)
+
+model.print_trainable_parameters()
+from transformers import TrainingArguments
+
+training_args = TrainingArguments(
+    output_dir="./fine_tuned_model",
+    num_train_epochs=3,
+    per_device_train_batch_size=1,
+    gradient_accumulation_steps=4,
+    learning_rate=2e-4,
+    logging_steps=1,
+    save_strategy="epoch",
+    report_to="none"
+)
+from transformers import Trainer
+
+trainer = Trainer(
+    model=model,
+    args=training_args,
+    train_dataset=tokenized_dataset
+)
+import torch
+
+prompt = """<|user|>
+What is Machine Learning?
+<|assistant|>
+"""
+
+inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+
+with torch.no_grad():
+    outputs = model.generate(
+        **inputs,
+        max_new_tokens=80,
+        temperature=0.7,
+        do_sample=True
+    )
+
+response = tokenizer.decode(
+    outputs[0],
+    skip_special_tokens=True
+)
+
+print(response)
+questions = [
+    "What is RAG?",
+    "What is SQL?",
+    "What is a tokenizer?",
+    "What is a neural network?"
+]
+
+for question in questions:
+    prompt = f"""<|user|>
+{question}
+<|assistant|>
+"""
+
+    inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+
+    with torch.no_grad():
+        outputs = model.generate(
+            **inputs,
+            max_new_tokens=80,
+            temperature=0.7,
+            do_sample=True
+        )
+
+    response = tokenizer.decode(
+        outputs[0],
+        skip_special_tokens=True
+    )
+
+    print("Question:", question)
+    print("Answer:", response)
+    print("-" * 60)
+def chat(user_message):
+
+    prompt = f"""<|user|>
+{user_message}
+<|assistant|>
+"""
+
+    inputs = tokenizer(
+        prompt,
+        return_tensors="pt"
+    ).to(model.device)
+
+    with torch.no_grad():
+        outputs = model.generate(
+            **inputs,
+            max_new_tokens=80,
+            do_sample=True,
+            temperature=0.7
+        )
+
+    # Decode only the newly generated tokens
+    new_tokens = outputs[0][inputs["input_ids"].shape[1]:]
+
+    response = tokenizer.decode(
+        new_tokens,
+        skip_special_tokens=True
+    )
+
+    return response.strip()
+chat('what is python')
+print(chat("What is RAG?"))
