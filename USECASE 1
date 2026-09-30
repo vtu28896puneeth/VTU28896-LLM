@@ -1,0 +1,47 @@
+!pip install -q -U google-genai
+import os
+from google.colab import userdata
+os.environ["GEMINI_API_KEY"] = userdata.get("GEMINI_API_KEY")
+from google import genai
+client = genai.Client()
+for model in client.models.list():
+    print(model.name)
+response = client.models.generate_content(
+    model="gemini-3.5-flash-lite",
+    contents="Explain what an LLM is in one simple paragraph."
+)
+
+print(response.text)
+conversation_history = []
+import google.generativeai as genai
+from google.generativeai.types import Part # Explicitly import Part
+
+def chat(user_message):
+    conversation_history.append({
+        "role": "user",
+        "content": user_message
+    })
+
+    # Convert the conversation_history to the format expected by generate_content
+    # Each entry should be a dictionary with 'role' and 'parts' keys
+    formatted_contents = []
+    for entry in conversation_history:
+        formatted_contents.append({
+            "role": entry["role"],
+            "parts": [Part(text=entry["content"])] # Ensure parts contain genai.types.Part objects
+        })
+
+    response = client.models.generate_content(
+        model="gemini-3.5-flash-lite",
+        contents=formatted_contents # Use the correctly formatted contents
+    )
+
+    assistant_message = response.text
+
+    conversation_history.append({
+        "role": "assistant",
+        "content": assistant_message
+    })
+
+    return assistant_message
+chat("Hello i am puneeth ,what's your name")
