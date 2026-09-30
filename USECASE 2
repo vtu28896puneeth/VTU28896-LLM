@@ -1,0 +1,150 @@
+!pip install -q -U google-genai sentence-transformers faiss-cpu pypdf
+knowledge_base = """
+My name is Puneeth
+
+I am pursuing a Bachelor of Technology in Computer Science and Engineering.
+I am interested in Artificial Intelligence, Machine Learning, Data Science,
+Large Language Models, and software development.
+
+My technical skills include Python, SQL, DBMS, Data Analysis,
+Machine Learning, Predictive Analytics, NumPy, Pandas, Matplotlib,
+Seaborn, and Power BI.
+
+I have worked on projects including Employee Attrition Prediction,
+a Parking Application called ParkX, Hotel Booking Data Analysis,
+an E-Commerce Database project, and a Customer Churn Prediction project.
+
+I am also learning about Large Language Models, Transformers,
+RAG systems, APIs, and AI chatbots.
+
+My goal is to build strong skills in AI, Machine Learning,
+Data Science, and software development.
+"""
+
+print(knowledge_base)
+chunks = [
+    """Personal Information:
+My name is puneeth
+I am interested in Artificial Intelligence, Machine Learning,
+Data Science, Large Language Models, and software development.""",
+
+    """Education:
+I am pursuing a Bachelor of Technology in Computer Science and Engineering.""",
+
+    """Technical Skills:
+My technical skills include Python, SQL, DBMS, Data Analysis,
+Machine Learning, Predictive Analytics, NumPy, Pandas,
+Matplotlib, Seaborn, and Power BI.""",
+
+    """Projects:
+I have worked on Employee Attrition Prediction,
+a Parking Application called ParkX, Hotel Booking Data Analysis,
+an E-Commerce Database project, and a Customer Churn Prediction project.""",
+
+    """LLM and AI Learning:
+I am learning about Large Language Models, Transformers,
+RAG systems, APIs, and AI chatbots.""",
+
+    """Career Goals:
+My goal is to build strong skills in AI, Machine Learning,
+Data Science, and software development."""
+]
+
+print("Number of chunks:", len(chunks))
+
+for i, chunk in enumerate(chunks):
+    print(f"\n--- Chunk {i + 1} ---")
+    print(chunk)
+from sentence_transformers import SentenceTransformer
+
+embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+
+embeddings = embedding_model.encode(chunks)
+
+print("Number of chunks:", len(chunks))
+print("Embedding shape:", embeddings.shape)
+import faiss
+import numpy as np
+
+embedding_dimension = embeddings.shape[1]
+
+index = faiss.IndexFlatL2(embedding_dimension)
+
+index.add(np.array(embeddings).astype("float32"))
+
+print("Number of vectors stored:", index.ntotal)
+import os
+from google.colab import userdata
+from google import genai
+
+# Load API key from Colab Secrets
+api_key = userdata.get("GEMINI_API_KEY")
+
+# Create Gemini client using that key
+client = genai.Client(api_key=api_key)
+
+print("Gemini client initialized successfully.")
+def retrieve_chunks(query, top_k=2):
+    query_embedding = embedding_model.encode([query])
+
+    distances, indices = index.search(
+        np.array(query_embedding).astype("float32"),
+        top_k
+    )
+
+    retrieved_chunks = [chunks[i] for i in indices[0]]
+
+    return retrieved_chunks
+
+
+query = "What are my technical skills?"
+
+retrieved_chunks = retrieve_chunks(query)
+
+print("User Question:")
+print(query)
+
+print("\nRetrieved Information:")
+
+for i, chunk in enumerate(retrieved_chunks):
+    print(f"\n--- Retrieved Chunk {i + 1} ---")
+    print(chunk)
+def chat(user_message):
+
+    # Retrieve relevant information from RAG
+    retrieved_chunks = retrieve_chunks(user_message)
+
+    # Combine retrieved chunks
+    context = "\n\n".join(retrieved_chunks)
+
+    # Send both RAG context and the question to Gemini
+    prompt = f"""
+You are a helpful AI assistant.
+
+You have access to:
+1. Your general knowledge as an LLM.
+2. Additional information retrieved from a knowledge base.
+
+Use the knowledge base when it contains relevant information.
+For general questions, use your own knowledge.
+You can combine both when necessary.
+
+Knowledge Base:
+{context}
+
+User Question:
+{user_message}
+
+Give a clear and accurate answer.
+"""
+
+    # Gemini LLM generates the final answer
+    response = client.models.generate_content(
+        model="gemini-3.5-flash-lite",
+        contents=prompt
+    )
+
+    return response.text
+chat("what are shravan skills")
+print(chat("What is Machine Learning?"))
+print(chat("What is Machine Learning, and what ML projects have I worked on?"))
